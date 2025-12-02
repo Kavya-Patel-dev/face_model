@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Class Schedule</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+
+        .schedule-form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .class-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 120px;
+        }
+
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+            font-size: 12px;
+        }
+
+        input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            margin: 5px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a6fd8;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .current-schedule {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 768px) {
+            .class-item {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .form-group {
+                min-width: auto;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Admin Panel</h1>
+            <p>Manage Class Schedule</p>
+        </div>
+
+        <div class="current-schedule">
+            <h3>📅 Current Schedule</h3>
+            <div id="currentScheduleDisplay">
+                Loading current schedule...
+            </div>
+        </div>
+
+        <div class="schedule-form">
+            <h3>✏️ Edit Schedule</h3>
+            <div id="scheduleEditor">
+                <!-- Schedule items will be loaded here -->
+            </div>
+            
+            <div class="controls">
+                <button class="btn btn-primary" onclick="addNewClass()">+ Add New Class</button>
+                <button class="btn btn-success" onclick="saveSchedule()">💾 Save Schedule</button>
+                <button class="btn btn-secondary" onclick="loadCurrentSchedule()">🔄 Reload</button>
+                <button class="btn btn-danger" onclick="goBack()">← Back to Dashboard</button>
+            </div>
+        </div>
+
+        <div id="status"></div>
+    </div>
+
+    <script>
+        let currentSchedule = [];
+
+        function loadCurrentSchedule() {
+            fetch('/api/schedule')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        currentSchedule = data.schedule;
+                        displayCurrentSchedule(data.schedule);
+                        populateEditor(data.schedule);
+                    }
+                })
+                .catch(error => {
+                    showStatus('Error loading schedule: ' + error.message, 'error');
+                });
+        }
+
+        function displayCurrentSchedule(schedule) {
+            const display = document.getElementById('currentScheduleDisplay');
+            display.innerHTML = '';
+            
+            schedule.forEach(cls => {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding: 10px; margin: 5px 0; background: white; border-radius: 5px; border-left: 3px solid #28a745;';
+                item.innerHTML = `
+                    <strong>${cls.subject}</strong> | 
+                    ${cls.start} - ${cls.end} | 
+                    Grace: ${cls.grace_period} min
+                `;
+                display.appendChild(item);
+            });
+        }
+
+        function populateEditor(schedule) {
+            const editor = document.getElementById('scheduleEditor');
+            editor.innerHTML = '';
+            
+            schedule.forEach((cls, index) => {
+                addClassItem(cls, index);
+            });
+        }
+
+        function addClassItem(cls = {subject: '', start: '', end: '', grace_period: 2}, index = -1) {
+            const editor = document.getElementById('scheduleEditor');
+            const item = document.createElement('div');
+            item.className = 'class-item';
+            item.setAttribute('data-index', index);
+            
+            item.innerHTML = `
+                <div class="form-group">
+                    <label>Subject Name</label>
+                    <input type="text" class="subject-input" value="${cls.subject}" placeholder="e.g., AIML">
+                </div>
+                <div class="form-group">
+                    <label>Start Time</label>
+                    <input type="time" class="start-input" value="${cls.start}">
+                </div>
+                <div class="form-group">
+                    <label>End Time</label>
+                    <input type="time" class="end-input" value="${cls.end}">
+                </div>
+                <div class="form-group">
+                    <label>Grace Period (min)</label>
+                    <input type="number" class="grace-input" value="${cls.grace_period}" min="0" max="10">
+                </div>
+                <div class="form-group">
+                    <button class="btn btn-danger" onclick="removeClassItem(this)">🗑️ Remove</button>
+                </div>
+            `;
+            
+            editor.appendChild(item);
+        }
+
+        function addNewClass() {
+            addClassItem();
+        }
+
+        function removeClassItem(button) {
+            button.closest('.class-item').remove();
+        }
+
+        function saveSchedule() {
+            const password = prompt('Enter admin password to save changes:');
+            if (!password) return;
+
+            const classItems = document.querySelectorAll('.class-item');
+            const newSchedule = [];
+            
+            classItems.forEach(item => {
+                const subject = item.querySelector('.subject-input').value.trim();
+                const start = item.querySelector('.start-input').value;
+                const end = item.querySelector('.end-input').value;
+                const grace_period = parseInt(item.querySelector('.grace-input').value) || 2;
+                
+                if (subject && start && end) {
+                    newSchedule.push({
+                        subject: subject,
+                        start: start,
+                        end: end,
+                        grace_period: grace_period
+                    });
+                }
+            });
+
+            if (newSchedule.length === 0) {
+                showStatus('Please add at least one valid class', 'error');
+                return;
+            }
+
+            fetch('/api/admin/schedule', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    password: password,
+                    schedule: newSchedule
+                })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    showStatus('✅ Schedule updated successfully!', 'success');
+                    loadCurrentSchedule();
+                } else {
+                    showStatus('❌ ' + result.message, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('❌ Error saving schedule: ' + error.message, 'error');
+            });
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            
+            setTimeout(() => {
+                status.textContent = '';
+                status.className = '';
+            }, 5000);
+        }
+
+        function goBack() {
+            window.location.href = '/';
+        }
+
+        // Load current schedule on page load
+        window.addEventListener('load', () => {
+            loadCurrentSchedule();
+        });
+    </script>
+</body>
+</html>

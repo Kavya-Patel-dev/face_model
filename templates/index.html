@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #4a4a4a;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        .status-present {
+            color: green;
+            font-weight: bold;
+        }
+
+        .status-absent {
+            color: red;
+            font-weight: bold;
+        }
+
+        .timestamp {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .mobile-link {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+        }
+
+        .mobile-link a {
+            color: white;
+            text-decoration: none;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .mobile-link a:hover {
+            text-decoration: underline;
+        }
+        
+        .schedule-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .current-class {
+            background: #e8f5e8;
+            border: 2px solid #4caf50;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: center;
+        }
+        
+        .current-class.late {
+            background: #ffebee;
+            border-color: #f44336;
+        }
+        
+        .current-class.no-class {
+            background: #fff8e1;
+            border-color: #ff9800;
+        }
+        
+        .schedule-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .schedule-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .schedule-item.active {
+            border-left-color: #4caf50;
+            background: #e8f5e8;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>🔴 Live Attendance Log</h1>
+        
+        <div class="schedule-section">
+            <h2>📅 Class Schedule</h2>
+            <div class="current-class" id="currentClass">
+                <h3 id="classStatus">Loading current class...</h3>
+                <p id="classDetails"></p>
+            </div>
+            <ul class="schedule-list" id="scheduleList">
+                <!-- Schedule items will be loaded dynamically -->
+            </ul>
+        </div>
+        
+        <div class="mobile-link">
+            <a href="/mobile">📱 Mobile Camera Attendance</a>
+        </div>
+        
+        <div class="admin-access" style="text-align: center; margin: 10px 0;">
+            <button onclick="accessAdmin()" style="background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+                🔐 Admin Access
+            </button>
+        </div>
+        
+        <table id="logs-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Subject</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const socket = io();
+        
+        // Load schedule from server
+        function loadSchedule() {
+            fetch('/api/schedule')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        displaySchedule(data.schedule);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading schedule:', error);
+                });
+        }
+        
+        function displaySchedule(schedule) {
+            const scheduleList = document.getElementById('scheduleList');
+            scheduleList.innerHTML = ''; // Clear existing items
+            
+            schedule.forEach(cls => {
+                const listItem = document.createElement('li');
+                listItem.className = 'schedule-item';
+                listItem.innerHTML = `
+                    <span><strong>${cls.subject}</strong></span>
+                    <span>${cls.start} - ${cls.end} (Grace: ${cls.grace_period} min)</span>
+                `;
+                scheduleList.appendChild(listItem);
+            });
+        }
+        
+        // Update class status more frequently (every 5 seconds)
+        function updateClassStatus() {
+            // Get current time for immediate display
+            const now = new Date();
+            const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+            
+            fetch('/api/class-status')
+                .then(response => response.json())
+                .then(result => {
+                    if (result.class_info) {
+                        displayClassStatus(result.class_info);
+                    }
+                })
+                .catch(error => {
+                    // Fallback - try the recognize endpoint
+                    fetch('/api/recognize', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ image: 'data:image/jpeg;base64,' })
+                    })
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.class_info) {
+                            displayClassStatus(result.class_info);
+                        }
+                    })
+                    .catch(error => {
+                        console.log('Class status update failed:', error);
+                        // Show current time even if API fails
+                        document.getElementById('classDetails').textContent = `Current time: ${currentTime}`;
+                    });
+                });
+        }
+        
+        function displayClassStatus(classInfo) {
+            const statusElement = document.getElementById('classStatus');
+            const detailsElement = document.getElementById('classDetails');
+            const currentClassElement = document.getElementById('currentClass');
+            
+            // Get current time
+            const now = new Date();
+            const currentTime = now.toTimeString().slice(0, 5);
+            
+            statusElement.textContent = classInfo.subject;
+            detailsElement.innerHTML = `${classInfo.status}<br><small>Current time: ${currentTime}</small>`;
+            
+            // Remove existing classes
+            currentClassElement.className = 'current-class';
+            
+            // Add appropriate class based on status
+            if (classInfo.color === 'green') {
+                // Active class - green background
+                currentClassElement.style.animation = 'pulse 2s infinite';
+            } else if (classInfo.color === 'red') {
+                currentClassElement.classList.add('late');
+                currentClassElement.style.animation = 'none';
+            } else {
+                currentClassElement.classList.add('no-class');
+                currentClassElement.style.animation = 'none';
+            }
+            
+            // Update active schedule item
+            updateScheduleHighlight(classInfo.subject);
+        }
+        
+        function updateScheduleHighlight(activeSubject) {
+            const scheduleItems = document.querySelectorAll('.schedule-item');
+            scheduleItems.forEach(item => {
+                item.classList.remove('active');
+                if (item.textContent.includes(activeSubject) && activeSubject !== 'No Active Class') {
+                    item.classList.add('active');
+                }
+            });
+        }
+        
+        function accessAdmin() {
+            const password = prompt('Enter admin password:');
+            if (password) {
+                fetch('/api/admin/verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ password: password })
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.status === 'success') {
+                        window.location.href = '/admin';
+                    } else {
+                        alert('Invalid password!');
+                    }
+                })
+                .catch(error => {
+                    alert('Error accessing admin panel');
+                });
+            }
+        }
+        
+        // Initial class status check and frequent updates (every 5 seconds)
+        loadSchedule(); // Load schedule first
+        updateClassStatus();
+        setInterval(updateClassStatus, 5000); // Update every 5 seconds
+
+        function addRow(log) {
+            const tbody = document.querySelector('#logs-table tbody');
+            const row = document.createElement('tr');
+            const date = new Date(log.timestamp);
+            const timeStr = date.toLocaleTimeString();
+            const dateStr = date.toLocaleDateString();
+
+            const statusClass = log.status === 'Present' ? 'status-present' : 'status-absent';
+
+            row.innerHTML = `
+            <td>${log.name}</td>
+            <td>${log.subject || '-'}</td>
+            <td class="${statusClass}">${log.status}</td>
+            <td class="timestamp">${dateStr} ${timeStr}</td>
+        `;
+
+            // Add to top
+            tbody.insertBefore(row, tbody.firstChild);
+        }
+
+        async function fetchLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const logs = await response.json();
+
+                const tbody = document.querySelector('#logs-table tbody');
+                tbody.innerHTML = ''; // Clear existing rows
+
+                logs.forEach(log => {
+                    // We reuse addRow but append instead of insertBefore for initial load if we want order, 
+                    // but fetchLogs returns sorted newest first, so just appending is fine.
+                    // Actually, let's just use innerHTML for bulk load to be simple
+                    const row = document.createElement('tr');
+                    const date = new Date(log.timestamp);
+                    const timeStr = date.toLocaleTimeString();
+                    const dateStr = date.toLocaleDateString();
+                    const statusClass = log.status === 'Present' ? 'status-present' : 'status-absent';
+
+                    row.innerHTML = `
+                    <td>${log.name}</td>
+                    <td>${log.subject || '-'}</td>
+                    <td class="${statusClass}">${log.status}</td>
+                    <td class="timestamp">${dateStr} ${timeStr}</td>
+                `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error fetching logs:', error);
+            }
+        }
+
+        // Initial Load
+        fetchLogs();
+
+        // Real-time Update
+        socket.on('new_log', function (log) {
+            addRow(log);
+        });
+    </script>
+
+</body>
+
+</html>
